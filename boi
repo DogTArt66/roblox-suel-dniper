@@ -1,0 +1,605 @@
+--[[
+    Sniper Arena - Loadstring Version
+    Just copy and execute this entire script
+    Features: Aimbot, ESP, Skin Changer, Look Detection with Floating Button
+]]
+
+-- Main execution function
+local function SniperArena()
+    -- Screen configuration (iPhone 6 optimized)
+    local screen = {
+        WIDTH = 375,
+        HEIGHT = 667
+    }
+
+    -- Initialize renderer
+    local success = renderer::Init("Sniper Arena", screen.WIDTH, screen.HEIGHT)
+    if (not success) then return end
+
+    -- Helper functions
+    local function getPlayerPosition(player)
+        return player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character.HumanoidRootPart.Position
+    end
+
+    local function worldToScreen(position)
+        local camera = workspace.CurrentCamera
+        local vector, onScreen = camera:WorldToScreenPoint(position)
+        return Vector2.new(vector.X, vector.Y), onScreen
+    end
+
+    local function getPlayerColor(player)
+        if player.Team then
+            return player.Team.TeamColor.Color
+        end
+        return Color3.new(1, 1, 1)
+    end
+
+    local function isPlayerLookingAtMe(looker, target)
+        if not looker or not target then return false end
+        
+        local lookerChar = looker.Character
+        local targetChar = target.Character
+        
+        if not lookerChar or not targetChar then return false end
+        
+        local lookerHead = lookerChar:FindFirstChild("Head")
+        local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
+        
+        if not lookerHead or not targetHRP then return false end
+        
+        local lookDirection = lookerHead.CFrame.LookVector
+        local toTarget = (targetHRP.Position - lookerHead.Position).Unit
+        
+        return lookDirection:Dot(toTarget) > 0.866
+    end
+
+    local function getClosestPlayerInFOV(fovCenter, fovRadius)
+        local closestPlayer = nil
+        local closestDistance = fovRadius
+        local players = game:GetService("Players")
+        local localPlayer = players.LocalPlayer
+        
+        for _, player in ipairs(players:GetPlayers()) do
+            if player ~= localPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                local pos, onScreen = worldToScreen(player.Character.HumanoidRootPart.Position)
+                if onScreen then
+                    local distance = (Vector2.new(pos.X, pos.Y) - fovCenter).Magnitude
+                    if distance < closestDistance then
+                        closestDistance = distance
+                        closestPlayer = player
+                    end
+                end
+            end
+        end
+        
+        return closestPlayer
+    end
+
+    -- State management
+    local state = {
+        aimbot = {
+            enabled = false,
+            strength = 0.8,
+            fovSize = 150,
+            fovColor = Color3.new(1, 0, 0),
+            fovVisible = true,
+            quickScope = false
+        },
+        esp = {
+            enabled = false,
+            showBoxes = true,
+            showNames = true,
+            showDistance = true,
+            showHealth = true,
+            boxColor = Color3.new(1, 1, 1),
+            tracerEnabled = false,
+            tracerColor = Color3.new(0, 1, 0)
+        },
+        skinChanger = {
+            enabled = false,
+            selectedSkin = "Default",
+            skins = {"Default", "Gold", "Dragon", "Ice", "Fire", "Neon"}
+        },
+        lookNotif = {
+            enabled = true,
+            currentLooker = nil,
+            lastLookTime = 0
+        },
+        button = {
+            position = Vector2.new(screen.WIDTH - 70, screen.HEIGHT - 70),
+            size = Vector2.new(50, 50),
+            dragging = false,
+            dragOffset = Vector2.new(0, 0),
+            color = Color3.new(0.8, 0.2, 0.2),
+            hoverColor = Color3.new(1, 0.3, 0.3),
+            activeColor = Color3.new(0.6, 0.1, 0.1)
+        },
+        ui = {
+            menuOpen = false,
+            currentTab = 1
+        }
+    }
+
+    -- Skin changer
+    local function applySkin(weapon, skinName)
+        if not state.skinChanger.enabled then return end
+        
+        local handle = weapon:FindFirstChild("Handle")
+        if not handle then return end
+        
+        local texture = handle:FindFirstChild("Texture")
+        if not texture then
+            texture = Instance.new("Texture")
+            texture.Face = Enum.NormalId.Front
+            texture.Parent = handle
+        end
+        
+        local skinColors = {
+            Default = Color3.new(1, 1, 1),
+            Gold = Color3.new(1, 0.85, 0),
+            Dragon = Color3.new(1, 0.3, 0),
+            Ice = Color3.new(0.5, 0.8, 1),
+            Fire = Color3.new(1, 0.5, 0),
+            Neon = Color3.new(0, 1, 1)
+        }
+        
+        texture.Color3 = skinColors[skinName] or Color3.new(1, 1, 1)
+        texture.Transparency = 0
+        texture.StudsPerTileU = 2
+        texture.StudsPerTileV = 2
+    end
+
+    -- ESP Drawing
+    local function drawESP()
+        if not state.esp.enabled then return end
+        
+        local camera = workspace.CurrentCamera
+        local players = game:GetService("Players")
+        local localPlayer = players.LocalPlayer
+        
+        for _, player in ipairs(players:GetPlayers()) do
+            if player ~= localPlayer and player.Character and player.Character:FindFirstChild("Humanoid") then
+                local humanoid = player.Character.Humanoid
+                local hrp = player.Character:FindFirstChild("HumanoidRootPart")
+                
+                if hrp and humanoid.Health > 0 then
+                    local pos, onScreen = worldToScreen(hrp.Position)
+                    if onScreen then
+                        local color = state.esp.boxColor
+                        
+                        if state.esp.showBoxes then
+                            local scale = 100 / (hrp.Position - camera.CFrame.Position).Magnitude
+                            local width = 40 * scale
+                            local height = 70 * scale
+                            
+                            drawing.drawing.new("Line"):Draw({
+                                from = Vector2.new(pos.X - width, pos.Y - height),
+                                to = Vector2.new(pos.X + width, pos.Y - height),
+                                color = color,
+                                thickness = 1
+                            })
+                            drawing.drawing.new("Line"):Draw({
+                                from = Vector2.new(pos.X + width, pos.Y - height),
+                                to = Vector2.new(pos.X + width, pos.Y + height),
+                                color = color,
+                                thickness = 1
+                            })
+                            drawing.drawing.new("Line"):Draw({
+                                from = Vector2.new(pos.X + width, pos.Y + height),
+                                to = Vector2.new(pos.X - width, pos.Y + height),
+                                color = color,
+                                thickness = 1
+                            })
+                            drawing.drawing.new("Line"):Draw({
+                                from = Vector2.new(pos.X - width, pos.Y + height),
+                                to = Vector2.new(pos.X - width, pos.Y - height),
+                                color = color,
+                                thickness = 1
+                            })
+                        end
+                        
+                        if state.esp.showNames then
+                            drawing.drawing.new("Text"):Draw({
+                                text = player.Name,
+                                position = Vector2.new(pos.X, pos.Y - 80),
+                                color = color,
+                                size = 16,
+                                center = true
+                            })
+                        end
+                        
+                        if state.esp.showDistance then
+                            local distance = (hrp.Position - camera.CFrame.Position).Magnitude
+                            drawing.drawing.new("Text"):Draw({
+                                text = string.format("%.0fm", distance),
+                                position = Vector2.new(pos.X, pos.Y - 60),
+                                color = Color3.new(1, 1, 1),
+                                size = 14,
+                                center = true
+                            })
+                        end
+                        
+                        if state.esp.showHealth then
+                            local healthPercent = humanoid.Health / humanoid.MaxHealth
+                            local barWidth = 50
+                            local barHeight = 5
+                            local healthColor = Color3.new(1 - healthPercent, healthPercent, 0)
+                            
+                            drawing.drawing.new("Square"):Draw({
+                                position = Vector2.new(pos.X - barWidth/2, pos.Y + 50),
+                                size = Vector2.new(barWidth, barHeight),
+                                color = Color3.new(0, 0, 0),
+                                filled = true
+                            })
+                            
+                            drawing.drawing.new("Square"):Draw({
+                                position = Vector2.new(pos.X - barWidth/2, pos.Y + 50),
+                                size = Vector2.new(barWidth * healthPercent, barHeight),
+                                color = healthColor,
+                                filled = true
+                            })
+                        end
+                        
+                        if state.esp.tracerEnabled then
+                            drawing.drawing.new("Line"):Draw({
+                                from = Vector2.new(screen.WIDTH/2, screen.HEIGHT),
+                                to = Vector2.new(pos.X, pos.Y),
+                                color = state.esp.tracerColor,
+                                thickness = 1
+                            })
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- FOV Drawing
+    local function drawFOV()
+        if not state.aimbot.fovVisible then return end
+        
+        local center = Vector2.new(screen.WIDTH/2, screen.HEIGHT/2)
+        
+        drawing.drawing.new("Circle"):Draw({
+            position = center,
+            radius = state.aimbot.fovSize,
+            color = state.aimbot.fovColor,
+            thickness = 2,
+            filled = false
+        })
+        
+        drawing.drawing.new("Line"):Draw({
+            from = Vector2.new(center.X - 10, center.Y),
+            to = Vector2.new(center.X + 10, center.Y),
+            color = Color3.new(1, 1, 1),
+            thickness = 1
+        })
+        drawing.drawing.new("Line"):Draw({
+            from = Vector2.new(center.X, center.Y - 10),
+            to = Vector2.new(center.X, center.Y + 10),
+            color = Color3.new(1, 1, 1),
+            thickness = 1
+        })
+    end
+
+    -- Look Notification
+    local function drawLookNotification()
+        if not state.lookNotif.enabled then return end
+        
+        local players = game:GetService("Players")
+        local localPlayer = players.LocalPlayer
+        
+        for _, player in ipairs(players:GetPlayers()) do
+            if player ~= localPlayer and isPlayerLookingAtMe(player, localPlayer) then
+                drawing.drawing.new("Square"):Draw({
+                    position = Vector2.new(screen.WIDTH/2 - 100, 20),
+                    size = Vector2.new(200, 30),
+                    color = Color3.new(1, 0, 0),
+                    transparency = 0.3,
+                    filled = true
+                })
+                
+                drawing.drawing.new("Text"):Draw({
+                    text = "⚠️ " .. player.Name .. " is looking at you! ⚠️",
+                    position = Vector2.new(screen.WIDTH/2, 35),
+                    color = Color3.new(1, 1, 1),
+                    size = 14,
+                    center = true
+                })
+                
+                state.lookNotif.currentLooker = player
+                state.lookNotif.lastLookTime = tick()
+                break
+            end
+        end
+        
+        if tick() - state.lookNotif.lastLookTime > 2 then
+            state.lookNotif.currentLooker = nil
+        end
+    end
+
+    -- Floating Button
+    local function handleFloatingButton()
+        local mousePos = Vector2.new(ImGui::GetMousePos().x, ImGui::GetMousePos().y)
+        local buttonRect = {
+            min = state.button.position,
+            max = state.button.position + state.button.size
+        }
+        
+        local isHovered = mousePos.X >= buttonRect.min.X and mousePos.X <= buttonRect.max.X and
+                         mousePos.Y >= buttonRect.min.Y and mousePos.Y <= buttonRect.max.Y
+        
+        if ImGui::IsMouseDown(0) then
+            if isHovered and not state.button.dragging then
+                state.button.dragging = true
+                state.button.dragOffset = mousePos - state.button.position
+            end
+        else
+            state.button.dragging = false
+        end
+        
+        if state.button.dragging then
+            state.button.position = mousePos - state.button.dragOffset
+            state.button.position.X = math.max(0, math.min(screen.WIDTH - state.button.size.X, state.button.position.X))
+            state.button.position.Y = math.max(0, math.min(screen.HEIGHT - state.button.size.Y, state.button.position.Y))
+        end
+        
+        if ImGui::IsMouseReleased(0) and isHovered and not state.button.dragging then
+            state.ui.menuOpen = not state.ui.menuOpen
+        end
+        
+        local buttonColor = state.button.color
+        if state.button.dragging then
+            buttonColor = state.button.activeColor
+        elseif isHovered then
+            buttonColor = state.button.hoverColor
+        end
+        
+        drawing.drawing.new("Square"):Draw({
+            position = state.button.position,
+            size = state.button.size,
+            color = buttonColor,
+            filled = true,
+            transparency = 0.2
+        })
+        
+        drawing.drawing.new("Square"):Draw({
+            position = state.button.position,
+            size = state.button.size,
+            color = Color3.new(1, 1, 1),
+            filled = false,
+            thickness = 2
+        })
+        
+        local center = state.button.position + state.button.size/2
+        drawing.drawing.new("Line"):Draw({
+            from = center + Vector2.new(-10, 0),
+            to = center + Vector2.new(10, 0),
+            color = Color3.new(1, 1, 1),
+            thickness = 2
+        })
+        drawing.drawing.new("Line"):Draw({
+            from = center + Vector2.new(0, -10),
+            to = center + Vector2.new(0, 10),
+            color = Color3.new(1, 1, 1),
+            thickness = 2
+        })
+        
+        if state.ui.menuOpen then
+            drawing.drawing.new("Circle"):Draw({
+                position = state.button.position + Vector2.new(state.button.size.X - 8, 8),
+                radius = 4,
+                color = Color3.new(0, 1, 0),
+                filled = true
+            })
+        end
+    end
+
+    -- Aimbot
+    local function handleAimbot()
+        if not state.aimbot.enabled then return end
+        
+        local userInputService = game:GetService("UserInputService")
+        local camera = workspace.CurrentCamera
+        local center = Vector2.new(screen.WIDTH/2, screen.HEIGHT/2)
+        
+        local isAiming = userInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+        if state.aimbot.quickScope then
+            isAiming = isAiming or userInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+        end
+        
+        if isAiming then
+            local target = getClosestPlayerInFOV(center, state.aimbot.fovSize)
+            
+            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                local hrp = target.Character.HumanoidRootPart
+                local targetPos, onScreen = worldToScreen(hrp.Position)
+                
+                if onScreen then
+                    local delta = Vector2.new(targetPos.X, targetPos.Y) - center
+                    local aimOffset = delta * state.aimbot.strength
+                    
+                    camera.CFrame = CFrame.new(
+                        camera.CFrame.Position,
+                        camera.CFrame.Position + Vector3.new(aimOffset.X, aimOffset.Y, 0)
+                    )
+                end
+            end
+        end
+    end
+
+    -- Skin Changer
+    local function handleSkinChanger()
+        if not state.skinChanger.enabled then return end
+        
+        local localPlayer = game:GetService("Players").LocalPlayer
+        if not localPlayer.Character then return end
+        
+        local weapon = localPlayer.Character:FindFirstChildOfClass("Tool")
+        if weapon and weapon:IsA("Tool") then
+            applySkin(weapon, state.skinChanger.selectedSkin)
+        end
+    end
+
+    -- Main Menu
+    local function drawMainMenu()
+        if not state.ui.menuOpen then return end
+        
+        local menuWidth = 350
+        local menuHeight = 500
+        local menuPos = Vector2.new((screen.WIDTH - menuWidth)/2, (screen.HEIGHT - menuHeight)/2)
+        
+        ImGui::SetNextWindowSize(menuWidth, menuHeight)
+        ImGui::SetNextWindowPos(menuPos.X, menuPos.Y)
+        ImGui::Begin("Sniper Arena", ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoCollapse)
+        
+        if ImGui::Button("X", ImVec2(30, 30)) then
+            state.ui.menuOpen = false
+        end
+        
+        if ImGui::BeginTabBar("MainTabs") then
+            -- Aimbot Tab
+            if ImGui::BeginTabItem("🎯 Aimbot") then
+                ImGui::SeparatorText("Aimbot Settings")
+                
+                local aimEnabled, aimChanged = ImGui::Checkbox("Enable Aimbot", state.aimbot.enabled)
+                if aimChanged then state.aimbot.enabled = aimEnabled end
+                
+                local quickScope, qsChanged = ImGui::Checkbox("Quick Scope Mode", state.aimbot.quickScope)
+                if qsChanged then state.aimbot.quickScope = quickScope end
+                
+                local strength, strChanged = ImGui::SliderFloat("Strength", state.aimbot.strength, 0.0, 1.0)
+                if strChanged then state.aimbot.strength = strength end
+                
+                ImGui::SeparatorText("FOV Settings")
+                
+                local fovSize, fovChanged = ImGui::SliderInt("FOV Size", state.aimbot.fovSize, 50, 300)
+                if fovChanged then state.aimbot.fovSize = fovSize end
+                
+                local fovVisible, visChanged = ImGui::Checkbox("Show FOV", state.aimbot.fovVisible)
+                if visChanged then state.aimbot.fovVisible = fovVisible end
+                
+                local fovColor, colorChanged = ImGui::ColorEdit3("FOV Color", state.aimbot.fovColor)
+                if colorChanged then state.aimbot.fovColor = fovColor end
+                
+                ImGui::EndTabItem()
+            end
+            
+            -- ESP Tab
+            if ImGui::BeginTabItem("👁️ ESP") then
+                ImGui::SeparatorText("ESP Settings")
+                
+                local espEnabled, espChanged = ImGui::Checkbox("Enable ESP", state.esp.enabled)
+                if espChanged then state.esp.enabled = espEnabled end
+                
+                local showBoxes, boxChanged = ImGui::Checkbox("Show Boxes", state.esp.showBoxes)
+                if boxChanged then state.esp.showBoxes = showBoxes end
+                
+                local showNames, nameChanged = ImGui::Checkbox("Show Names", state.esp.showNames)
+                if nameChanged then state.esp.showNames = showNames end
+                
+                local showDistance, distChanged = ImGui::Checkbox("Show Distance", state.esp.showDistance)
+                if distChanged then state.esp.showDistance = showDistance end
+                
+                local showHealth, healthChanged = ImGui::Checkbox("Show Health", state.esp.showHealth)
+                if healthChanged then state.esp.showHealth = showHealth end
+                
+                local tracerEnabled, tracerChanged = ImGui::Checkbox("Enable Tracers", state.esp.tracerEnabled)
+                if tracerChanged then state.esp.tracerEnabled = tracerEnabled end
+                
+                local boxColor, boxColorChanged = ImGui::ColorEdit3("Box Color", state.esp.boxColor)
+                if boxColorChanged then state.esp.boxColor = boxColor end
+                
+                if state.esp.tracerEnabled then
+                    local tracerColor, tracerColorChanged = ImGui::ColorEdit3("Tracer Color", state.esp.tracerColor)
+                    if tracerColorChanged then state.esp.tracerColor = tracerColor end
+                end
+                
+                ImGui::EndTabItem()
+            end
+            
+            -- Skins Tab
+            if ImGui::BeginTabItem("🎨 Skins") then
+                ImGui::SeparatorText("Skin Changer")
+                
+                local skinEnabled, skinChanged = ImGui::Checkbox("Enable Skin Changer", state.skinChanger.enabled)
+                if skinChanged then state.skinChanger.enabled = skinEnabled end
+                
+                if state.skinChanger.enabled then
+                    if ImGui::BeginCombo("Select Skin", state.skinChanger.selectedSkin) then
+                        for _, skin in ipairs(state.skinChanger.skins) do
+                            local isSelected = skin == state.skinChanger.selectedSkin
+                            if ImGui::Selectable(skin, isSelected) then
+                                state.skinChanger.selectedSkin = skin
+                            end
+                            if isSelected then ImGui::SetItemDefaultFocus() end
+                        end
+                        ImGui::EndCombo()
+                    end
+                    
+                    local previewColors = {
+                        Default = ImVec4(1,1,1,1),
+                        Gold = ImVec4(1,0.85,0,1),
+                        Dragon = ImVec4(1,0.3,0,1),
+                        Ice = ImVec4(0.5,0.8,1,1),
+                        Fire = ImVec4(1,0.5,0,1),
+                        Neon = ImVec4(0,1,1,1)
+                    }
+                    ImGui::ColorButton("Preview", previewColors[state.skinChanger.selectedSkin], 0, ImVec2(50,50))
+                    ImGui::SameLine()
+                    ImGui::Text("  Current: " .. state.skinChanger.selectedSkin)
+                end
+                
+                ImGui::EndTabItem()
+            end
+            
+            -- Alerts Tab
+            if ImGui::BeginTabItem("🔔 Alerts") then
+                ImGui::SeparatorText("Look Detection")
+                
+                local notifEnabled, notifChanged = ImGui::Checkbox("Enable Look Notifications", state.lookNotif.enabled)
+                if notifChanged then state.lookNotif.enabled = notifEnabled end
+                
+                if state.lookNotif.currentLooker then
+                    ImGui::TextColored(ImVec4(1, 0, 0, 1), "👀 " .. state.lookNotif.currentLooker.Name .. " is watching you!")
+                else
+                    ImGui::TextColored(ImVec4(0, 1, 0, 1), "✅ No one is watching")
+                end
+                
+                ImGui::SeparatorText("Status")
+                ImGui::Text("Aimbot: " .. (state.aimbot.enabled and "✅ ON" or "❌ OFF"))
+                ImGui::Text("ESP: " .. (state.esp.enabled and "✅ ON" or "❌ OFF"))
+                ImGui::Text("Skins: " .. (state.skinChanger.enabled and "✅ ON" or "❌ OFF"))
+                
+                ImGui::EndTabItem()
+            end
+            
+            ImGui::EndTabBar()
+        end
+        
+        ImGui::End()
+    end
+
+    -- Main Loop
+    while (renderer::ShouldClose() == false) do
+        renderer::BeginFrame()
+        
+        handleAimbot()
+        handleSkinChanger()
+        drawFOV()
+        drawESP()
+        drawLookNotification()
+        handleFloatingButton()
+        drawMainMenu()
+        
+        renderer::EndFrame()
+    end
+    
+    renderer::Shutdown()
+end
+
+-- Execute the script
+local success, err = pcall(SniperArena)
+if not success then
+    warn("Sniper Arena failed to load: " .. tostring(err))
+end
