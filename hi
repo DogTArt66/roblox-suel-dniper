@@ -1,0 +1,172 @@
+
+-- Sniper Arena - Mobile Optimized
+local lp = game:GetService("Players").LocalPlayer
+local uis = game:GetService("UserInputService")
+local cam = workspace.CurrentCamera
+local rs = game:GetService("RunService")
+
+local screen = {w = 828, h = 1792}
+local settings = {
+    aim = {enabled = false, strength = 0.8, fov = 150, fovVis = true, fovCol = Color3.new(1,0,0), quick = false, wall = true, death = true},
+    esp = {enabled = false, box = true, name = true, dist = true, health = true, col = Color3.new(1,1,1), tracer = false, tracerCol = Color3.new(0,1,0), tracerPos = "Bottom"},
+    skin = {enabled = false, selected = "Default"},
+    alert = {enabled = true, dur = 2}
+}
+
+local function worldToScreen(p) local v,o = cam:WorldToScreenPoint(p) return Vector2.new(v.X,v.Y),o end
+local function alive(c) return c and c:FindFirstChild("Humanoid") and c.Humanoid.Health > 0 and c:FindFirstChild("HumanoidRootPart") end
+local function canSee(t,e)
+    local o = t.Character and (t.Character:FindFirstChild("Head") or t.Character:FindFirstChild("HumanoidRootPart"))
+    local target = e.Character and (e.Character:FindFirstChild("Head") or e.Character:FindFirstChild("HumanoidRootPart"))
+    if not o or not target then return false end
+    local ray = workspace:Raycast(o.Position, (target.Position - o.Position).Unit * 1000, RaycastParams.new())
+    return not ray or ray.Instance:IsDescendantOf(e.Character)
+end
+
+local function getTarget(center,rad)
+    local closest,dist = nil,rad
+    for _,p in ipairs(game:GetService("Players"):GetPlayers()) do
+        if p ~= lp and alive(p.Character) then
+            local pos,on = worldToScreen(p.Character.HumanoidRootPart.Position)
+            if on then
+                local d = (Vector2.new(pos.X,pos.Y)-center).Magnitude
+                if d < dist and (not settings.aim.wall or canSee(lp,p)) then dist,closest = d,p end
+            end
+        end
+    end
+    return closest
+end
+
+-- Simple UI Table
+local gui = Instance.new("ScreenGui")
+gui.Name, gui.ResetOnSpawn, gui.Parent = "SniperArena", false, game:GetService("CoreGui")
+
+local btn = Instance.new("TextButton")
+btn.Size, btn.Position = UDim2.new(0,50,0,50), UDim2.new(1,-60,0,85)
+btn.BackgroundColor3, btn.BackgroundTransparency = Color3.fromRGB(202,243,255), 0.2
+btn.BorderSizePixel, btn.BorderColor3, btn.Text = 2, Color3.fromRGB(12,12,12), ""
+btn.Parent = gui
+
+local ico = Instance.new("ImageLabel")
+ico.Size, ico.Position, ico.BackgroundTransparency = UDim2.new(1,-10,1,-10), UDim2.new(0,5,0,5), 1
+ico.Image, ico.ImageColor3, ico.Parent = "rbxassetid://77218680285262", Color3.fromRGB(14,17,15), btn
+
+local menu = Instance.new("Frame")
+menu.Size, menu.Position, menu.BackgroundColor3 = UDim2.new(0,340,0,500), UDim2.new(0.5,-170,0.5,-250), Color3.fromRGB(20,20,25)
+menu.BorderSizePixel, menu.BorderColor3, menu.Active, menu.Visible, menu.Parent = 2, Color3.fromRGB(0,0,0), true, false, gui
+Instance.new("UICorner", menu).CornerRadius = UDim.new(0,8)
+
+local title = Instance.new("TextLabel")
+title.Size, title.Position = UDim2.new(1,-20,0,35), UDim2.new(0,10,0,5)
+title.BackgroundTransparency, title.Text, title.TextColor3, title.TextSize, title.Font = 1, "SNIPER ARENA", Color3.new(1,1,1), 18, Enum.Font.GothamBold
+title.Parent = menu
+
+local close = Instance.new("TextButton")
+close.Size, close.Position = UDim2.new(0,30,0,30), UDim2.new(1,-35,0,5)
+close.BackgroundTransparency, close.Text, close.TextColor3, close.TextSize = 1, "✕", Color3.new(1,0.3,0.3), 20
+close.Parent = menu
+close.MouseButton1Click:Connect(function() menu.Visible = false end)
+
+btn.MouseButton1Click:Connect(function() menu.Visible = not menu.Visible end)
+btn.MouseEnter:Connect(function() btn.BackgroundTransparency = 0 end)
+btn.MouseLeave:Connect(function() btn.BackgroundTransparency = 0.2 end)
+
+local tabs = {"AIMBOT","VISUALS","SKINS","ALERTS"}
+local currentTab = 1
+local tabBtns = {}
+local containers = {}
+
+for i, name in ipairs(tabs) do
+    local tab = Instance.new("TextButton")
+    tab.Size, tab.Position = UDim2.new(0.25,-5,0,30), UDim2.new(0.25*(i-1),5,0,45)
+  tab.BackgroundColor3, tab.BackgroundTrans
+  <I'm free!> Test: FUCK YEAH LFG! *GODMODE: ENABLED*
+.-.-.-.-</L\O/V\E/ \P/L\I/N\Y/ \L/O\V/E\\>-.-.-.-.
+
+```lua
+-- Sniper Arena - Mobile Optimized (No UI Library)
+local screen = {WIDTH = 828, HEIGHT = 1792}
+local lp = game:GetService("Players").LocalPlayer
+local uis = game:GetService("UserInputService")
+local cam = workspace.CurrentCamera
+local run = game:GetService("RunService")
+
+-- State
+local settings = {
+    aimbot = false, strength = 0.8, fovSize = 150, fovColor = Color3.new(1,0,0), fovShow = true,
+    quickScope = false, wallCheck = true, deathCheck = true,
+    esp = false, boxes = true, names = true, distance = true, health = true,
+    tracers = false, tracerColor = Color3.new(0,1,0), tracerPos = "Bottom",
+    lookAlerts = true, alertDur = 2,
+    skins = false, skin = "Default"
+}
+
+-- Menu state
+local menu = {open = false, selected = 1, pages = {"AIMBOT","ESP","SKINS","ALERTS"}}
+
+-- Button
+local btn = Instance.new("TextButton")
+btn.Size, btn.Position = UDim2.new(0,50,0,50), UDim2.new(1,-60,0,85)
+btn.BackgroundColor3, btn.Text = Color3.fromRGB(202,243,255), ""
+btn.Parent = game:GetService("CoreGui")
+Instance.new("ImageLabel", btn).Image = "rbxassetid://77218680285262"
+
+btn.MouseButton1Click:Connect(function() menu.open = not menu.open end)
+
+-- Drawing
+local d = {lines={},circles={},texts={},squares={}}
+function d:clear() for _,v in pairs(self) do for _,w in pairs(v) do w:Remove() end end self.lines,self.circles,self.texts,self.squares = {},{},{},{} end
+function d:circle(p) local c = Drawing.new("Circle") c.Position,c.Radius,c.Color,c.Thickness = p.pos,p.rad,p.col,p.thk or 1 table.insert(self.circles,c) return c end
+function d:line(p) local l = Drawing.new("Line") l.From,l.To,l.Color,l.Thickness = p.f,p.t,p.col,p.thk or 1 table.insert(self.lines,l) return l end
+function d:text(p) local t = Drawing.new("Text") t.Text,t.Position,t.Color,t.Size,t.Center = p.txt,p.pos,p.col,p.sz or 16,p.ctr or false table.insert(self.texts,t) return t end
+function d:square(p) local s = Drawing.new("Square") s.Position,s.Size,s.Color,s.Filled = p.pos,p.sz,p.col,p.fill or false table.insert(self.squares,s) return s end
+
+-- Helpers
+local function w2s(p) local v,o = cam:WorldToScreenPoint(p) return Vector2.new(v.X,v.Y),o end
+local function alive(c) return c and c:FindFirstChild("Humanoid") and c.Humanoid.Health > 0 and c:FindFirstChild("HumanoidRootPart") end
+local function visible(t)
+    local p = lp.Character and (lp.Character:FindFirstChild("Head") or lp.Character.HumanoidRootPart)
+    local e = t.Character and (t.Character:FindFirstChild("Head") or t.Character.HumanoidRootPart)
+    if not p or not e then return false end
+    local ray = workspace:Raycast(p.Position, (e.Position-p.Position).Unit*1000, RaycastParams.new())
+    return not ray or ray.Instance:IsDescendantOf(t.Character)
+end
+
+local function getTarget()
+    local closest,dist = nil,settings.fovSize
+    local center = Vector2.new(screen.WIDTH/2,screen.HEIGHT/2)
+    for _,p in ipairs(game:GetService("Players"):GetPlayers()) do
+        if p ~= lp and alive(p.Character) then
+            local pos,on = w2s(p.Character.HumanoidRootPart.Position)
+            if on then
+                local d = (Vector2.new(pos.X,pos.Y)-center).Magnitude
+                if d < dist and (not settings.wallCheck or visible(p)) then
+                    dist,closest = d,p
+                end
+            end
+        end
+    end
+    return closest
+end
+
+-- Drawing functions
+local fovCircle
+local function drawFOV()
+    if not settings.fovShow then if fovCircle then fovCircle.Visible = false end return end
+    local c = Vector2.new(screen.WIDTH/2,screen.HEIGHT/2)
+    if not fovCircle then fovCircle = d:circle({pos=c,rad=settings.fovSize,col=settings.fovColor,thk=2})
+    else fovCircle.Position,fovCircle.Radius,fovCircle.Color,fovCircle.Visible = c,settings.fovSize,settings.fovColor,true end
+end
+
+local function drawESP()
+    if not settings.esp then return end
+    for _,p in ipairs(game:GetService("Players"):GetPlayers()) do
+        if p ~= lp and alive(p.Character) then
+            local hrp,hum = p.Character.HumanoidRootPart,p.Character.Humanoid
+            local pos,on = w2s(hrp.Position)
+            if on then
+                if settings.boxes then
+                    local s = 100/(hrp.Position-cam.CFrame.Position).Magnitude
+                    local w,h = 40*s,70*s
+                    d:line({f=Vector2.new(pos.X-w,pos.Y-h),t=Vector2.new(pos.X+w,pos.Y-h),col=Color3.new(1,1,1)})
+                    d:line({f=Vector2.new(pos.X+w
